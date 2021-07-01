@@ -6,7 +6,7 @@ from scipy.special import softmax
 from model_semi_crf import *
 from util import *
 import time, gzip
-import os,pickle
+import os,pickle,json
 from datetime import timedelta
 from datetime import datetime
 # from torchtext.vocab import load_word_vectors
@@ -345,8 +345,8 @@ if __name__ == '__main__':
 						help='MTReference, Wikipedia, newsela, arxiv')
 	args = parser.parse_args()
 	print(args)
-	print("max_span_size is {}".format(max_span_size))
-	print("max_sent_length is {}".format(max_sent_length))
+	# print("max_span_size is {}".format(max_span_size))
+	# print("max_sent_length is {}".format(max_sent_length))
 
 	data_set = args.dataset  # MTReference_LUC, MTReference, iSTS_LDC, iSTS, wikismall
 	if 'MTReference' in data_set:
@@ -359,37 +359,25 @@ if __name__ == '__main__':
 	print(save_name)
 	org_save_name = save_name
 	if data_set=='MTReference':
-		train_set = readEdinburghDataset_reverse(base_path + 'data/mt-reference/clean-version/clean-train-dep-old-version.json', args.sure_and_possible=='True',transpose)
-		dev_set = readEdinburghDataset_reverse(base_path + 'data/mt-reference/clean-version/human_errors/dev_and_test_after_correction/clean-dev.tsv',args.sure_and_possible=='True', transpose)
-		test_set = readEdinburghDataset_reverse(base_path + 'data/mt-reference/clean-version/human_errors/dev_and_test_after_correction/clean-test.tsv',args.sure_and_possible=='True', transpose)
-		# newsela_set = readEdinburghDataset_reverse(base_path + 'data/newsela/batch_01.tsv', sure_and_possible, transpose)
-		# arxiv_set = readEdinburghDataset_reverse(base_path + 'data/arxiv/batch_01.tsv', sure_and_possible, transpose)
-		# wiki_set = readEdinburghDataset_reverse(base_path + 'data/wikipedia/qa-wiki-test.txt', sure_and_possible, transpose)
+		train_set = read_Word_Alignment_Dataset(base_path + 'MultiMWA-data/MultiMWA-MTRef/mtref-train.tsv', args.sure_and_possible=='True',transpose)
+		dev_set = read_Word_Alignment_Dataset(base_path + 'MultiMWA-data/MultiMWA-MTRef/mtref-dev.tsv',args.sure_and_possible=='True', transpose)
+		test_set = read_Word_Alignment_Dataset(base_path + 'MultiMWA-data/MultiMWA-MTRef/mtref-test.tsv',args.sure_and_possible=='True', transpose)
+		# newsela_set = read_Word_Alignment_Dataset(base_path + 'data/newsela/batch_01.tsv', True, transpose)
+		# arxiv_set = read_Word_Alignment_Dataset(base_path + 'data/arxiv/batch_01.tsv', True, transpose)
+		# wiki_set = read_Word_Alignment_Dataset(base_path + 'data/wikipedia/qa-wiki-test.txt', True, transpose)
+		print('MTReference training size: %d' % len(train_set[0]))
+		print('MTReference dev size: %d' % len(dev_set[0]))
+		print('MTReference test size: %d' % len(test_set[0]))
 	elif data_set=='Wikipedia':
-		train_set = readEdinburghDataset_reverse(base_path + 'data/wikipedia/qa-wiki-train.txt', True, transpose)
-		dev_set = readEdinburghDataset_reverse(base_path + 'data/wikipedia/qa-wiki-dev.txt', True, transpose)
-		test_set = readEdinburghDataset_reverse(base_path + 'data/wikipedia/qa-wiki-test.txt', True, transpose)
-	elif data_set=='iSTS':
-		train_set = readEdinburghDataset_reverse(base_path + 'data/iSTS/train/iSTS.headlines+images.train.json', False, False)
-		test_set_headlines = readEdinburghDataset_reverse(base_path + 'data/iSTS/test/iSTS.headlines.test.json', False, False)
-		test_set_images = readEdinburghDataset_reverse(base_path + 'data/iSTS/test/iSTS.images.test.json', False, False)
-		dev_set= (test_set_headlines[0] + test_set_images[0], test_set_headlines[1] + test_set_images[1], test_set_headlines[2] + test_set_images[2])
-		test_set=dev_set
-	elif data_set=='wikismall':
-		train_set = readWikismall(base_path+'data/wikismall/', 'train')
-		dev_set = readWikismall(base_path + 'data/wikismall/', 'valid')
-		test_set = readWikismall(base_path + 'data/wikismall/', 'test')
-	elif data_set=='newsela-old':
-		train_set = readNewselaold(base_path+'data/newsela-old/', 'train')
-		dev_set = readNewselaold(base_path + 'data/newsela-old/', 'valid')
-		test_set = readNewselaold(base_path + 'data/newsela-old/', 'test')
-	elif data_set == 'wikiqa':
-		train_set = readWikiQA(base_path+'data/wikiqa/','train')
-		dev_set = readWikiQA(base_path+'data/wikiqa/','dev')
-		test_set = readWikiQA(base_path+'data/wikiqa/','test')
-	print('MTReference training size: %d' % len(train_set[0]))
-	print('MTReference dev size: %d' % len(dev_set[0]))
-	print('MTReference test size: %d' % len(test_set[0]))
+		train_set = read_Word_Alignment_Dataset(base_path + 'MultiMWA-data/MultiMWA-Wiki/wiki-train.tsv', True, transpose)
+		dev_set = read_Word_Alignment_Dataset(base_path + 'MultiMWA-data/MultiMWA-Wiki/wiki-dev.tsv', True, transpose)
+		test_set = read_Word_Alignment_Dataset(base_path + 'MultiMWA-data/MultiMWA-Wiki/wiki-test.tsv', True, transpose)
+		print('Wikipedia training size: %d' % len(train_set[0]))
+		print('Wikipedia dev size: %d' % len(dev_set[0]))
+		print('Wikipedia test size: %d' % len(test_set[0]))
+	else:
+		print('Please use MTReference or Wikipedia dataset.')
+		sys.exit()
 	embedding_dim = 300
 	num_layers=1
 	num_epochs = 5
@@ -422,15 +410,6 @@ if __name__ == '__main__':
 			model.load_state_dict(checkpoint['model_state_dict'])
 			model.eval()
 			print('start evaluation...')
-			# args.alignment_save_path=base_path+'data/wikiqa/test/'
-			# generate_test_output_crf_alignment(test_set, model, args)
-			args.alignment_save_path = base_path + 'data/wikiqa/dev/'
-			generate_test_output_crf_alignment(dev_set, model, args)
-			args.alignment_save_path = base_path + 'data/wikiqa/train/'
-			generate_test_output_crf_alignment(train_set, model, args)
-			sys.exit()
-			precision, recall, f1, acc = generate_test_output_crf_alignment(dev_set, model, args)
-			print('MTReference dev score: precision: %.6f  recall: %.6f  f1: %.6f acc: %.6f' % (precision, recall, f1, acc))
 			precision, recall, f1, acc = generate_test_output_crf_alignment(test_set, model, args)
 			print('MTReference test score: precision: %.6f  recall: %.6f  f1: %.6f acc: %.6f' % (precision, recall, f1, acc))
 		sys.exit()
@@ -505,7 +484,7 @@ if __name__ == '__main__':
 			data_loss += loss.data
 			optimizer.step()
 			valid_train_examples+=1
-			if valid_train_examples%50==0:
+			if valid_train_examples%1==0:
 				print('# ' + str(valid_train_examples) + ': Loss: ' + str(data_loss/valid_train_examples))
 				# break
 		# start testing
@@ -516,25 +495,14 @@ if __name__ == '__main__':
 		print(msg)
 		model.eval()
 		print('Results:')
-		# precision, recall, dev_f1, acc = generate_test_output_crf_alignment(dev_set, model, args)
 		precision, recall, dev_f1, acc = generate_test_output_crf_alignment(dev_set, model, args,  base_path + 'checkpoints/'+ save_name +'_epoch_'+str(epoch)+'_dev_data_to_write.pt')
 
 		print('MTReference dev score: precision: %.6f  recall: %.6f  f1: %.6f acc: %.6f' % (precision, recall, dev_f1, acc))
-		if (dev_f1 > best_f1 or acc > best_acc) and True:
+		if (dev_f1 > best_f1 or acc > best_acc):
 			best_f1 = dev_f1
 			best_acc = acc
-			if 'iSTS' in data_set:
-				print('Headlines results:')
-				save_name=org_save_name+'Headlines_'
-				precision, recall, f1, acc = generate_test_output_crf_alignment(test_set_headlines, model, args)
-				print('Test score: precision: %.6f  recall: %.6f  f1: %.6f acc: %.6f' % (precision, recall, f1, acc))
-				print('Images results:')
-				save_name = org_save_name + 'Images_'
-				precision, recall, f1, acc = generate_test_output_crf_alignment(test_set_images, model, args)
-				print('Test score: precision: %.6f  recall: %.6f  f1: %.6f acc: %.6f' % (precision, recall, f1, acc))
-			else:
-				precision, recall, f1, acc = generate_test_output_crf_alignment(test_set, model, args)
-				print('MTReference test score: precision: %.6f  recall: %.6f  f1: %.6f acc: %.6f' % (precision, recall, f1, acc))
+			precision, recall, f1, acc = generate_test_output_crf_alignment(test_set, model, args)
+			print('MTReference test score: precision: %.6f  recall: %.6f  f1: %.6f acc: %.6f' % (precision, recall, f1, acc))
 		torch.save({
 			'epoch': epoch,
 			'best_f1': best_f1,

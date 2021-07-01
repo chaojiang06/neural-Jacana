@@ -89,7 +89,7 @@ class NeuralWordAligner(nn.Module):
 				self.bert_model = self.bert_model.to(my_device)
 			else:
 				self.tokenizer = BertTokenizer.from_pretrained('bert-base-cased')
-				self.bert_model = BertModel.from_pretrained('spanbert_hf_base/', output_hidden_states=True,
+				self.bert_model = BertModel.from_pretrained('../../spanbert_hf_base/', output_hidden_states=True,
 													   output_attentions=True)
 				self.bert_model = self.bert_model.to(my_device)
 		else:
@@ -228,63 +228,6 @@ class NeuralWordAligner(nn.Module):
 				if i+span_size<=len(sent):
 					chunk_list.append([i+k for k in range(span_size)])
 		return sent_embd, chunk_list
-
-	def get_chunk_list(self,sent, cur_max_span_size):
-		chunk_list = []
-		for span_size in range(1, 1+cur_max_span_size):
-			for i in range(len(sent)):
-				if i+span_size<=len(sent):
-					chunk_list.append([i+k for k in range(span_size)])
-		return chunk_list
-
-	def compute_sim_cube_FF(self, seq1, seq2):
-		'''
-		:param seq1: bs * len_seq1 * dim
-		:param seq2: bs * len_seq2 * dim
-		:return:
-		'''
-		def compute_sim_FF(prism1, prism2):
-			features = torch.cat([prism1, prism2, torch.abs(prism1 - prism2), prism1 * prism2], dim=-1)
-			if prism1.size(-1)==self.embedding_dim:
-				FF_out = self.FF_kernel_glove(features)
-			else:
-				FF_out = self.FF_kernel(features)
-			return FF_out.permute(0,3,1,2)
-
-		def compute_prism(seq1, seq2):
-			prism1 = seq1.repeat(seq2.size(1), 1, 1, 1)
-			prism2 = seq2.repeat(seq1.size(1), 1, 1, 1)
-			prism1 = prism1.permute(1, 2, 0, 3).contiguous()
-			prism2 = prism2.permute(1, 0, 2, 3).contiguous()
-			return compute_sim_FF(prism1, prism2)
-
-		sim_cube = torch.Tensor(seq1.size(0), self.sim_feature_num, seq1.size(1), seq2.size(1)) # bs * feature_num * len_seq1 * len_seq2
-		sim_cube = sim_cube.to(my_device)
-		sim_cube[:, 0:self.sim_feature_num] = compute_prism(seq1, seq2)
-		return sim_cube
-
-	def compute_sim_cube_FF_zhengbao(self, seq1, seq2):
-		'''
-		:param seq1: bs * len_seq1 * dim
-		:param seq2: bs * len_seq2 * dim
-		:return:
-		'''
-		def compute_sim_FF(prism1, prism2):
-			features = torch.cat([prism1, prism2, torch.abs(prism1 - prism2), prism1 * prism2], dim=-1)
-			FF_out = self.FF_kernel_zhengbao(features)
-			return FF_out.permute(0,3,1,2)
-
-		def compute_prism(seq1, seq2):
-			prism1 = seq1.repeat(seq2.size(1), 1, 1, 1)
-			prism2 = seq2.repeat(seq1.size(1), 1, 1, 1)
-			prism1 = prism1.permute(1, 2, 0, 3).contiguous()
-			prism2 = prism2.permute(1, 0, 2, 3).contiguous()
-			return compute_sim_FF(prism1, prism2)
-
-		sim_cube = torch.Tensor(seq1.size(0), self.sim_feature_num, seq1.size(1), seq2.size(1)) # bs * feature_num * len_seq1 * len_seq2
-		sim_cube = sim_cube.to(my_device)
-		sim_cube[:, 0:self.sim_feature_num] = compute_prism(seq1, seq2)
-		return sim_cube
 
 	def compute_sim_cube_FF_spanbert(self, seq1, seq2):
 		'''
@@ -590,9 +533,9 @@ class NeuralWordAligner(nn.Module):
 
 	def _forward_alg(self, output_both, transition_matrix, len_A, gold_sentence):
 		target_size=output_both.size(1)
-		forward_var1 = torch.full((1, target_size), 0).to(my_device) #+ self.start_transition
-		forward_var2 = torch.full((1, target_size), 0).to(my_device) #+ self.start_transition
-		forward_var3 = torch.full((1, target_size), 0).to(my_device) #+ self.start_transition
+		forward_var1 = torch.full((1, target_size), 0).to(my_device)
+		forward_var2 = torch.full((1, target_size), 0).to(my_device)
+		forward_var3 = torch.full((1, target_size), 0).to(my_device)
 		tmp_forward_var1 = torch.full((1, target_size), 1).to(my_device)
 		tmp_forward_var2 = torch.full((1, target_size), 1).to(my_device)
 		tmp_forward_var3 = torch.full((1, target_size), 1).to(my_device)
@@ -677,10 +620,8 @@ class NeuralWordAligner(nn.Module):
 		:return:
 		"""
 		# embd_A: # of chunks in A * embedding_dim
-		input_sentA, sentA_tag_list, A_dep_tree = raw_input_A
-		input_sentB, sentB_tag_list, B_dep_tree = raw_input_B
-		# input_A='good time'
-		# input_B='I am good'
+		input_sentA, _, _ = raw_input_A
+		input_sentB, _, _ = raw_input_B
 		input_A=input_sentA.split()
 		input_B=input_sentB.split()
 		len_A = len(input_A)
@@ -692,8 +633,6 @@ class NeuralWordAligner(nn.Module):
 		# print(len_B, len(sentB_tag_list), extended_length_B)
 		embd_A_word, chunk_A = self.word_layer(input_A, self.max_span_size)
 		embd_B_word, chunk_B = self.word_layer(input_B, self.max_span_size)
-		embd_A_word = torch.unsqueeze(embd_A_word, 0).view(-1, 1, self.embedding_dim)
-		embd_B_word = torch.unsqueeze(embd_B_word, 0).view(-1, 1, self.embedding_dim)
 
 		input_ids_A = torch.tensor([self.tokenizer.encode(input_sentA, add_special_tokens=True)]).to(my_device)
 		input_ids_B = torch.tensor([self.tokenizer.encode(input_sentB, add_special_tokens=True)]).to(my_device)
@@ -743,7 +682,6 @@ class NeuralWordAligner(nn.Module):
 				split_tokens = self.tokenizer._tokenize(word)
 			tmp = [kk for kk in range(start, start + len(split_tokens))]
 			start += len(split_tokens)
-			# hidden_A0.append(torch.mean(fetched_hidden_state_A[:, tmp, :].data, 1, keepdim=True))
 			hidden_A0.append(torch.mean(fetched_hidden_state_A[:, tmp, :], 1, keepdim=True))
 		assert start==len(input_ids_A[0])
 		hidden_B0 = []
@@ -755,179 +693,57 @@ class NeuralWordAligner(nn.Module):
 				split_tokens = self.tokenizer._tokenize(word)
 			tmp = [kk for kk in range(start, start + len(split_tokens))]
 			start += len(split_tokens)
-			# hidden_B0.append(torch.mean(fetched_hidden_state_B[:, tmp, :].data, 1, keepdim=True))
 			hidden_B0.append(torch.mean(fetched_hidden_state_B[:, tmp, :], 1, keepdim=True))
 		assert start == len(input_ids_B[0])
 		# print([tokenizer._convert_id_to_token(int(item)) for item in input_ids_A[0]])
 		# print([tokenizer._convert_id_to_token(int(item)) for item in input_ids_B[0]])
 		# print(' '.join(recovered_A))
-		bert_embd_A = torch.cat(hidden_A0, 0)
-		bert_embd_B = torch.cat(hidden_B0, 0)
+		out0 = torch.cat(hidden_A0, 0)
+		out1 = torch.cat(hidden_B0, 0)
 		# print(hidden_A0.size(), len_A)
 		# print(hidden_B0.size(), len_B)
-		if len_A!=bert_embd_A.size(0) or len_B!=bert_embd_B.size(0):
-			print(input_A)
-			print(input_B)
-		assert bert_embd_A.size(0)==len_A and bert_embd_B.size(0)==len_B
+		assert out0.size(0)==len_A and out1.size(0)==len_B
 
-		if self.args.projection=='True':
-			bert_embd_A=self.bert_embd_reduce(bert_embd_A) # len_A * 1 * 300
-			bert_embd_B=self.bert_embd_reduce(bert_embd_B)
-		lstm_hA, _ = self.lstm(bert_embd_A)
-		lstm_hB, _ = self.lstm(bert_embd_B)
-
-		out0, out1=bert_embd_A, bert_embd_B
-		# print('embd_A_word: ', embd_A_word.size()) # ? len_A * 1 * 300
 		# print('out0: ', out0.size()) # len_A * 1 * 300
-		span_A=[]
-		span_B=[]
 		context_A_weight=[]
 		context_B_weight=[]
 		context_A_start = []
 		context_B_start = []
 		context_A_end = []
 		context_B_end = []
-		context_A_recursive = []
-		context_B_recursive = []
 		idx_0 = Variable(torch.LongTensor([0])).to(my_device)
-		idx_1 = Variable(torch.LongTensor([1])).to(my_device)
 		for chunk in chunk_A:
 			alpha=torch.matmul(self.attn(out0[chunk]),self.attn_embd(idx_0).view(-1,1))
 			alpha=F.softmax(alpha, dim=0)
-			if self.args.glove_representation=='attn_glove':
-				alpha_1 = torch.matmul(self.attn_glove(embd_A_word[chunk]), self.attn_embd(idx_1).view(-1, 1))
-				alpha_1 = F.softmax(alpha_1, dim=0)
-				span_A.append(torch.matmul(alpha_1.view(1, -1), embd_A_word[chunk].view(len(chunk), -1)))
-			else:
-				span_A.append(torch.matmul(alpha.view(1,-1),embd_A_word[chunk].view(len(chunk), -1)))
 			context_A_weight.append(torch.matmul(alpha.view(1,-1),out0[chunk].view(len(chunk), -1)))
 			context_A_start.append(out0[chunk[0]])
 			context_A_end.append(out0[chunk[-1]])
-			start_i, end_j = chunk[0], chunk[-1]
-			phrase_embeding = []
-			if start_i-1>=0:
-				phrase_embeding.append(lstm_hA[end_j][:,:self.span_representation_dim//4] - lstm_hA[start_i-1][:,:self.span_representation_dim//4])
-				phrase_embeding.append(lstm_hA[start_i-1][:,:self.span_representation_dim//4])
-			else:
-				phrase_embeding.append(lstm_hA[end_j][:, :self.span_representation_dim//4])
-				phrase_embeding.append(lstm_hA[start_i][:, :self.span_representation_dim//4] * 0)
-			if end_j+1 < len_A:
-				phrase_embeding.append(lstm_hA[start_i][:,self.span_representation_dim//4:] - lstm_hA[end_j+1][:, self.span_representation_dim//4:])
-				phrase_embeding.append(lstm_hA[end_j+1][:, self.span_representation_dim//4:])
-			else:
-				phrase_embeding.append(lstm_hA[start_i][:, self.span_representation_dim//4:])
-				phrase_embeding.append(lstm_hA[end_j][:, self.span_representation_dim//4:] * 0)
-			context_A_recursive.append(torch.cat(phrase_embeding, 1))
 		for chunk in chunk_B:
 			alpha=torch.matmul(self.attn(out1[chunk]),self.attn_embd(idx_0).view(-1,1))
 			alpha=F.softmax(alpha, dim=0)
-			if self.args.glove_representation == 'attn_glove':
-				alpha_1 = torch.matmul(self.attn_glove(embd_B_word[chunk]), self.attn_embd(idx_1).view(-1, 1))
-				alpha_1 = F.softmax(alpha_1, dim=0)
-				span_B.append(torch.matmul(alpha_1.view(1, -1), embd_B_word[chunk].view(len(chunk), -1)))
-			else:
-				span_B.append(torch.matmul(alpha.view(1,-1),embd_B_word[chunk].view(len(chunk), -1)))
 			context_B_weight.append(torch.matmul(alpha.view(1,-1),out1[chunk].view(len(chunk), -1)))
 			context_B_start.append(out1[chunk[0]])
 			context_B_end.append(out1[chunk[-1]])
-			start_i, end_j = chunk[0], chunk[-1]
-			phrase_embeding = []
-			if start_i - 1 >= 0:
-				phrase_embeding.append(lstm_hB[end_j][:, :self.span_representation_dim//4] - lstm_hB[start_i - 1][:, :self.span_representation_dim//4])
-				phrase_embeding.append(lstm_hB[start_i - 1][:, :self.span_representation_dim//4])
-			else:
-				phrase_embeding.append(lstm_hB[end_j][:, :self.span_representation_dim//4])
-				phrase_embeding.append(lstm_hB[start_i][:, :self.span_representation_dim//4] * 0)
-			if end_j + 1 < len_B:
-				phrase_embeding.append(lstm_hB[start_i][:, self.span_representation_dim//4:] - lstm_hB[end_j + 1][:, self.span_representation_dim//4:])
-				phrase_embeding.append(lstm_hB[end_j + 1][:, self.span_representation_dim//4:])
-			else:
-				phrase_embeding.append(lstm_hB[start_i][:, self.span_representation_dim//4:])
-				phrase_embeding.append(lstm_hB[end_j][:, self.span_representation_dim//4:] * 0)
-			context_B_recursive.append(torch.cat(phrase_embeding, 1))
-		span_A = torch.unsqueeze(torch.cat(span_A, 0), 0)
-		span_B = torch.unsqueeze(torch.cat(span_B, 0), 0)
 		context_A_weight = torch.unsqueeze(torch.cat(context_A_weight, 0), 0)
 		context_B_weight = torch.unsqueeze(torch.cat(context_B_weight, 0), 0)
-		context_A_recursive = torch.unsqueeze(torch.cat(context_A_recursive, 0), 0)
-		context_B_recursive = torch.unsqueeze(torch.cat(context_B_recursive, 0), 0)
 		context_A_start = torch.unsqueeze(torch.cat(context_A_start, 0), 0)
 		context_B_start = torch.unsqueeze(torch.cat(context_B_start, 0), 0)
 		context_A_end = torch.unsqueeze(torch.cat(context_A_end, 0), 0)
 		context_B_end = torch.unsqueeze(torch.cat(context_B_end, 0), 0)
-		# print(context_A_weight.size()) # 1 * len_A * 300
-		# print(context_B_weight.size())
-		context_A_zhengbao = torch.cat([context_A_weight,context_A_recursive[:,:,self.span_representation_dim//4:self.span_representation_dim//2], context_A_recursive[:,:,-self.span_representation_dim//4:]], 2)
-		context_B_zhengbao = torch.cat([context_B_weight,context_B_recursive[:,:,self.span_representation_dim//4:self.span_representation_dim//2], context_B_recursive[:,:,-self.span_representation_dim//4:]], 2)
 		context_A_spanbert = torch.cat([context_A_weight, context_A_start, context_A_end],2)
 		context_B_spanbert = torch.cat([context_B_weight, context_B_start, context_B_end],2)
-		# print(context_A_zhengbao.size()) # 1 * len_A * 450
-		# print(context_B_zhengbao.size()) # 1 * len_B * 450
-		simCube = self.compute_sim_cube_FF(self.bn_glove(span_A), self.bn_glove(span_B))[0]
-		simCube_context_weight = self.compute_sim_cube_FF(self.bn(context_A_weight), self.bn(context_B_weight))[0]
-		simCube_context_recursive = self.compute_sim_cube_FF(self.bn(context_A_recursive), self.bn(context_B_recursive))[0]
-		simCube_context_zhengbao = self.compute_sim_cube_FF_zhengbao(self.bn_zhengbao(context_A_zhengbao), self.bn_zhengbao(context_B_zhengbao))[0]
+
 		simCube_context_spanbert = self.compute_sim_cube_FF_spanbert(self.bn_spanbert(context_A_spanbert), self.bn_spanbert(context_B_spanbert))[0]
 
-		simCube_A2B = F.pad(simCube, (0, 1), 'constant', 0) # 12 * extended_lenA * extended_lenB --> 12 * extended_lenA * (extended_lenB + 1)
-		simCube_context_weight_A2B = F.pad(simCube_context_weight, (0, 1), 'constant', 0)
-		simCube_context_recursive_A2B = F.pad(simCube_context_recursive, (0, 1), 'constant', 0)
-		simCube_context_zhengbao_A2B = F.pad(simCube_context_zhengbao, (0, 1), 'constant', 0)
 		simCube_context_spanbert_A2B = F.pad(simCube_context_spanbert, (0, 1), 'constant', 0)
-		if self.args.glove_representation=='no_glove':
-			if self.args.span_representation=='avg_bert':
-				focusCube_A2B = torch.cat([simCube_context_weight_A2B], 0)
-			elif self.args.span_representation=='zhengbao_bert':
-				focusCube_A2B = torch.cat([simCube_context_zhengbao_A2B], 0)
-			elif self.args.span_representation=='zhengbao_spanbert':
-				focusCube_A2B = torch.cat([simCube_context_zhengbao_A2B], 0)
-			elif self.args.span_representation=='coref_spanbert':
-				focusCube_A2B = torch.cat([simCube_context_spanbert_A2B], 0)
-			else:
-				focusCube_A2B = torch.cat([simCube_context_recursive_A2B], 0)
-		else:
-			if self.args.span_representation=='avg_bert':
-				focusCube_A2B = torch.cat([simCube_A2B, simCube_context_weight_A2B], 0)
-			elif self.args.span_representation=='zhengbao_bert':
-				focusCube_A2B = torch.cat([simCube_A2B, simCube_context_zhengbao_A2B], 0)
-			elif self.args.span_representation=='zhengbao_spanbert':
-				focusCube_A2B = torch.cat([simCube_A2B, simCube_context_zhengbao_A2B], 0)
-			elif self.args.span_representation=='coref_spanbert':
-				focusCube_A2B = torch.cat([simCube_A2B, simCube_context_spanbert_A2B], 0)
-			else:
-				focusCube_A2B = torch.cat([simCube_A2B, simCube_context_recursive_A2B], 0)
+		focusCube_A2B = torch.cat([simCube_context_spanbert_A2B], 0)
 		focusCube_A2B=focusCube_A2B.permute(1,2,0)
 
-		simCube_B2A = F.pad(simCube.permute(0, 2, 1), (0, 1), 'constant', 0) # 12 * extended_lenB * extended_lenA --> 12 * extended_lenB * (extended_lenA + 1)
-		simCube_context_weight_B2A = F.pad(simCube_context_weight.permute(0, 2, 1), (0, 1), 'constant', 0)
-		simCube_context_recursive_B2A = F.pad(simCube_context_recursive.permute(0, 2, 1), (0, 1), 'constant', 0)
-		simCube_context_zhengbao_B2A = F.pad(simCube_context_zhengbao.permute(0, 2, 1), (0, 1), 'constant', 0)
 		simCube_context_spanbert_B2A = F.pad(simCube_context_spanbert.permute(0, 2, 1), (0, 1), 'constant', 0)
-		if self.args.glove_representation=='no_glove':
-			if self.args.span_representation=='avg_bert':
-				focusCube_B2A = torch.cat([simCube_context_weight_B2A], 0)
-			elif self.args.span_representation=='zhengbao_bert':
-				focusCube_B2A = torch.cat([simCube_context_zhengbao_B2A], 0)
-			elif self.args.span_representation=='zhengbao_spanbert':
-				focusCube_B2A = torch.cat([simCube_context_zhengbao_B2A], 0)
-			elif self.args.span_representation=='coref_spanbert':
-				focusCube_B2A = torch.cat([simCube_context_spanbert_B2A], 0)
-			else:
-				focusCube_B2A = torch.cat([simCube_context_recursive_B2A], 0)
-		else:
-			if self.args.span_representation=='avg_bert':
-				focusCube_B2A = torch.cat([simCube_B2A, simCube_context_weight_B2A], 0)
-			elif self.args.span_representation=='zhengbao_bert':
-				focusCube_B2A = torch.cat([simCube_B2A, simCube_context_zhengbao_B2A], 0)
-			elif self.args.span_representation=='zhengbao_spanbert':
-				focusCube_B2A = torch.cat([simCube_B2A, simCube_context_zhengbao_B2A], 0)
-			elif self.args.span_representation=='coref_spanbert':
-				focusCube_B2A = torch.cat([simCube_B2A, simCube_context_spanbert_B2A], 0)
-			else:
-				focusCube_B2A = torch.cat([simCube_B2A, simCube_context_recursive_B2A], 0)
+		focusCube_B2A = torch.cat([simCube_context_spanbert_B2A], 0)
 		focusCube_B2A = focusCube_B2A.permute(1, 2, 0)
 
-		output_both_A2B=self.mlp1(focusCube_A2B).squeeze() # extended_length_A * (extended_length_B + 1)
+		output_both_A2B = self.mlp1(focusCube_A2B).squeeze() # extended_length_A * (extended_length_B + 1)
 		output_both_B2A = self.mlp1(focusCube_B2A).squeeze()  # extended_length_B * (extended_length_A + 1)
 
 		if self.transition_layer_info == 'bin_vector':
@@ -948,11 +764,6 @@ class NeuralWordAligner(nn.Module):
 			transition_matrix_sentB = transition_matrix_sentB.to(my_device)
 			transition_matrix_sentA = transition_matrix_sentA.to(my_device)
 
-		# self.start_transition = Variable(torch.from_numpy(np.array(range(extended_length_B+1))).type(torch.LongTensor)).to(my_device)
-		# self.start_transition = self.mlp2(self.START(self.start_transition)).view(-1)
-		# self.end_transition = Variable(torch.from_numpy(np.array(range(extended_length_B+1))).type(torch.LongTensor)).to(my_device)
-		# self.end_transition = self.mlp2(self.END(self.end_transition)).view(-1)
-
 		transition_matrix_sentB = self.mlp2(transition_matrix_sentB)
 		transition_matrix_sentB=transition_matrix_sentB.view(transition_matrix_sentB.size(0), transition_matrix_sentB.size(1))
 
@@ -969,10 +780,6 @@ class NeuralWordAligner(nn.Module):
 			loss_sentA_to_sentB = forward_score_A2B  - gold_score_A2B
 
 			if bidirectional_training:
-				# self.start_transition = Variable(torch.from_numpy(np.array(range(extended_length_A + 1))).type(torch.LongTensor)).to(my_device)
-				# self.start_transition = self.mlp2(self.START(self.start_transition)).view(-1)
-				# self.end_transition = Variable(torch.from_numpy(np.array(range(extended_length_A + 1))).type(torch.LongTensor)).to(my_device)
-				# self.end_transition = self.mlp2(self.END(self.end_transition)).view(-1)
 				forward_score_B2A = self._forward_alg(output_both_B2A, transition_matrix_sentA, len_B, golden_sequence_sentB)
 				gold_score_B2A = self._score_sentence(output_both_B2A, transition_matrix_sentA, golden_sequence_sentB, len_B)
 				loss_sentB_to_sentA = forward_score_B2A  - gold_score_B2A
