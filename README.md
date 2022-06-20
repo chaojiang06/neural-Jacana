@@ -1,3 +1,5 @@
+
+# Usage
 Thank you for your interest in our work, we have done a initial release of our code and dataset. 
 
 Run non-batch version:
@@ -14,3 +16,6 @@ CUDA_VISIBLE_DEVICES=0 python -u neural_jacana.py --batchsize 1 --max_span_size 
 
 The paper can be found on [arXiv](https://arxiv.org/pdf/2106.02569.pdf). 
 The pre-trained checkpoint can be found [here](https://drive.google.com/file/d/13w2IkKQY7Em-lA1wkU4ipeOAqCW673dF/view?usp=sharing), see inference function in [tornado_server.py](https://github.com/chaojiang06/neural-Jacana/blob/main/code/tornado_server.py) for usage.
+
+# Acknowledgment
+This material is based in part on research sponsored by IARPA via the BETTER program (2019-19051600004).
